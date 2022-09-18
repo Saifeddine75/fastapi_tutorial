@@ -1,7 +1,11 @@
-from typing import Optional, List
-from models import User, Gender, Role, UserUpdateRequest
-from fastapi import FastAPI, HTTPException
+# Packages
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uuid import UUID, uuid4
+from typing import Optional, List
+
+from tortoise.contrib.fastapi import register_tortoise
+from models import User, Gender, Role, UserUpdateRequest
 
 app = FastAPI()
 
@@ -21,11 +25,18 @@ db: List[User] = [
         roles=[Role.admin, Role.user]
     )
 ]
-# GET HTTP Request
-@app.get("/")
 
-async def root():
-    return {"Hello": "Mundo"}
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
+
+# Authentification
+@app.post('/token')
+# Depends means return can be a form or nothing
+async def token(form_data: OAuth2PasswordRequestForm = Depends()):
+    return {'access_token': form_data.username + 'token'}
+
+@app.get("/")
+async def index(token: str = Depends(oauth2_scheme)):
+    return {'the_token': token}
 
 @app.get('/api/v1/users')
 async def fetch_users():
@@ -35,7 +46,6 @@ async def fetch_users():
 async def register_user(user: User):
     db.append(user)
     return {'id', user.id}
-
 
 @app.delete('/api/v1/users/{user_id}')
 async def delete_user(user_id: UUID):
@@ -67,3 +77,12 @@ async def update_user(user_update: UserUpdateRequest, user_id: UUID):
         status_code=404,
         detail=f'user with id "{user_id}" does not exists'
     )
+
+
+register_tortoise(
+    app,
+    db_url='sqlite://db.sqlite3',
+    modules={'models': ['models']},
+    generate_schemas=True,  # Create Table if it not exist
+    add_exception_handlers=True,
+)
